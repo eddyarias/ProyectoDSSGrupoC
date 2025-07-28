@@ -1,5 +1,10 @@
 # Documentación de la API - Sistema de Gestión de Incidentes (SDIS)
 
+### `npm install`
+
+### `node index.js`
+
+
 ## 1\. Introducción
 
 Esta es la documentación para la API del backend del Sistema de Gestión de Incidentes de Seguridad (SDIS). La API permite gestionar usuarios, incidentes y reportes, e implementa un sistema de autenticación robusto con roles y MFA.
