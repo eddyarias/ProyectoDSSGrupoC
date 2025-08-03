@@ -43,7 +43,7 @@ const SignupForm = () => {
       const result = await signup(userData);
       
       if (result.success) {
-        setSuccess('Registro exitoso. Revisa tu correo electrónico para confirmar tu cuenta.');
+        setSuccess('Registro exitoso. Inicia sesión para continuar.');
         setTimeout(() => {
           navigate('/login');
         }, 3000);
