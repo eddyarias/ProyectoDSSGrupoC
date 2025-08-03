@@ -5,7 +5,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Divider,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -13,11 +12,9 @@ import {
   Add as AddIcon,
   Assessment as ReportsIcon,
   People as UsersIcon,
-  Settings as SettingsIcon,
-  Security as SecurityIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { hasPermission, USER_ROLES } from '../../utils/constants';
+import { USER_ROLES } from '../../utils/constants';
 
 const NavigationItems = ({ userRole }) => {
   const navigate = useNavigate();
@@ -42,9 +39,6 @@ const NavigationItems = ({ userRole }) => {
       path: '/incidents/create',
       roles: [USER_ROLES.USUARIO, USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC],
     },
-  ];
-
-  const adminItems = [
     {
       text: 'Reportes',
       icon: <ReportsIcon />,
@@ -57,13 +51,10 @@ const NavigationItems = ({ userRole }) => {
       path: '/users',
       roles: [USER_ROLES.JEFE_SOC, USER_ROLES.GERENTE],
     },
-    {
-      text: 'Configuración',
-      icon: <SettingsIcon />,
-      path: '/settings',
-      roles: [USER_ROLES.JEFE_SOC, USER_ROLES.GERENTE],
-    },
+    // ...
   ];
+
+  // adminItems ya no es necesario, todo está en navigationItems
 
   const handleNavigation = (path) => {
     navigate(path);
@@ -95,26 +86,7 @@ const NavigationItems = ({ userRole }) => {
           ))}
       </List>
 
-      {adminItems.some(canAccessItem) && (
-        <>
-          <Divider />
-          <List>
-            {adminItems
-              .filter(canAccessItem)
-              .map((item) => (
-                <ListItem key={item.text} disablePadding>
-                  <ListItemButton
-                    selected={isActive(item.path)}
-                    onClick={() => handleNavigation(item.path)}
-                  >
-                    <ListItemIcon>{item.icon}</ListItemIcon>
-                    <ListItemText primary={item.text} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-          </List>
-        </>
-      )}
+      {/* adminItems eliminado, todo está en navigationItems */}
     </>
   );
 };

@@ -1,5 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+
+
+
 // Import the Supabase client we created
 const { supabase, supabaseAdmin } = require('./supabaseClient');
 const authenticateToken = require('./authMiddleware');
@@ -228,8 +231,8 @@ app.post('/api/admin/promote', authenticateToken, async (req, res) => {
 app.patch('/api/incidents/:id', authenticateToken, async (req, res) => {
   const userRole = req.user.user_metadata.role;
   const { id } = req.params;
-  // Change #1: Add 'criticality' to the destructuring
-  const { status, classification, criticality } = req.body; 
+  // Ahora también se permite actualizar la resolución
+  const { status, classification, criticality, resolution } = req.body; 
 
   const authorizedRoles = ['Analista de Seguridad', 'Jefe de SOC'];
   if (!authorizedRoles.includes(userRole)) {
@@ -239,8 +242,8 @@ app.patch('/api/incidents/:id', authenticateToken, async (req, res) => {
   const updateData = {};
   if (status) updateData.status = status;
   if (classification) updateData.classification = classification;
-  // Change #2: Add a check for the 'criticality' field
   if (criticality) updateData.criticality = criticality; 
+  if (resolution) updateData.resolution = resolution;
 
   if (Object.keys(updateData).length === 0) {
     return res.status(400).json({ error: 'Bad Request: No update data provided.' });
@@ -261,11 +264,16 @@ app.patch('/api/incidents/:id', authenticateToken, async (req, res) => {
   if (!error) {
     await logAction(req.user.id, 'UPDATE_INCIDENT', { incidentId: data.id, changes: updateData });
 
-    if (updateData.criticality && updateData.criticality === 'Alta') {
-      const subject = `Alerta de Incidente Crítico: #${data.id} - ${data.title}`;
-      const body = `Se ha elevado la criticidad del incidente #${data.id} a 'Alta'.\n\nPor favor, revise inmediatamente.`;
-      await sendAlertEmail(subject, body);
+    // Notificar por email cada vez que se actualiza la incidencia
+    const subject = `Actualización de Incidente #${data.id}`;
+    let body = `El incidente #${data.id} ha sido actualizado.\n\nCambios realizados:`;
+    Object.entries(updateData).forEach(([key, value]) => {
+      body += `\n- ${key}: ${value}`;
+    });
+    if (updateData.resolution) {
+      body += `\n\nResolución: ${updateData.resolution}`;
     }
+    await sendAlertEmail(subject, body);
   }
 
   res.status(200).json(data);
@@ -494,6 +502,21 @@ app.get('/api/incidents/export/pdf', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'No se pudo exportar los incidentes a PDF.' });
   }
 });
+
+// Endpoint para listar usuarios (gestión de usuarios)
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+  const userRole = req.user.user_metadata.role;
+  const allowedRoles = ['Jefe de SOC', 'Gerente de Riesgos'];
+  if (!allowedRoles.includes(userRole)) {
+    return res.status(403).json({ error: 'No tienes permisos para ver usuarios.' });
+  }
+  const { data, error } = await supabaseAdmin.auth.admin.listUsers();
+  if (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  res.status(200).json(data.users);
+});
+
 
 // Start the server
 app.listen(PORT, () => {

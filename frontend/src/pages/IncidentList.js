@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import IncidentDetails from '../components/IncidentDetails';
 import {
   Box,
   Paper,
@@ -71,14 +72,18 @@ const getStatusColor = (status) => {
 const IncidentList = () => {
   const navigate = useNavigate();
   const { getUserRole } = useAuth();
+  const userRole = getUserRole();
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editDialog, setEditDialog] = useState({ open: false, incident: null });
   const [uploadDialog, setUploadDialog] = useState({ open: false, incidentId: null });
   const [selectedFile, setSelectedFile] = useState(null);
+  const [detailsDialog, setDetailsDialog] = useState({ open: false, incident: null });
+  const [roleSelectorOpen, setRoleSelectorOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState(userRole);
+  const [promoteLoading, setPromoteLoading] = useState(false);
 
-  const userRole = getUserRole();
   const canUpdate = [USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC].includes(userRole);
   const canExport = [USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC, USER_ROLES.AUDITOR, USER_ROLES.GERENTE].includes(userRole);
 
@@ -104,9 +109,17 @@ const IncidentList = () => {
     setEditDialog({ open: true, incident });
   };
 
+  const handleViewDetails = (incident) => {
+    setDetailsDialog({ open: true, incident });
+  };
+
   const handleUpdate = async (updateData) => {
     try {
-      await updateIncident(editDialog.incident.id, updateData);
+      // Filtrar campos vacíos antes de enviar al backend
+      const filteredData = Object.fromEntries(
+        Object.entries(updateData).filter(([_, value]) => value !== '' && value !== null && value !== undefined)
+      );
+      await updateIncident(editDialog.incident.id, filteredData);
       setEditDialog({ open: false, incident: null });
       fetchIncidents();
     } catch (err) {
@@ -131,7 +144,7 @@ const IncidentList = () => {
     }
   };
 
-  const handleExport = async () => {
+  const handleExportPDF = async () => {
     try {
       const blob = await exportIncidentsPDF();
       const url = window.URL.createObjectURL(blob);
@@ -142,6 +155,38 @@ const IncidentList = () => {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       setError('Error al exportar los incidentes');
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/incidents/export/csv', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+      });
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'incidents_export.csv';
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError('Error al exportar CSV');
+    }
+  };
+
+  const handleRoleChange = async () => {
+    setPromoteLoading(true);
+    try {
+      const res = await import('../services/authService');
+      await res.promoteUser(selectedRole);
+      localStorage.setItem('userRole', selectedRole);
+      window.location.reload();
+    } catch (err) {
+      setError('Error al cambiar el rol');
+    } finally {
+      setPromoteLoading(false);
+      setRoleSelectorOpen(false);
     }
   };
 
@@ -160,14 +205,29 @@ const IncidentList = () => {
           Gestión de Incidentes
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setRoleSelectorOpen(true)}
+          >
+            Cambiar vista de rol
+          </Button>
           {canExport && (
-            <Button
-              variant="outlined"
-              startIcon={<ExportIcon />}
-              onClick={handleExport}
-            >
-              Exportar PDF
-            </Button>
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<ExportIcon />}
+                onClick={handleExportPDF}
+              >
+                Exportar PDF
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ExportIcon />}
+                onClick={handleExportCSV}
+              >
+                Exportar CSV
+              </Button>
+            </>
           )}
           <Button
             variant="contained"
@@ -225,11 +285,43 @@ const IncidentList = () => {
                       <Tooltip title="Ver detalles">
                         <IconButton 
                           size="small"
-                          onClick={() => navigate(`/incidents/${incident.id}`)}
+                          onClick={() => handleViewDetails(incident)}
                         >
                           <ViewIcon />
                         </IconButton>
                       </Tooltip>
+      {/* Details Dialog */}
+      <IncidentDetails
+        incident={detailsDialog.incident}
+        onClose={() => setDetailsDialog({ open: false, incident: null })}
+        onEdit={() => { setDetailsDialog({ open: false, incident: null }); handleEdit(detailsDialog.incident); }}
+        canEdit={canUpdate}
+        show={detailsDialog.open}
+      />
+      {/* Role Selector Dialog */}
+      <Dialog open={roleSelectorOpen} onClose={() => setRoleSelectorOpen(false)}>
+        <DialogTitle>Cambiar vista de rol</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Rol</InputLabel>
+            <Select
+              value={selectedRole}
+              label="Rol"
+              onChange={(e) => setSelectedRole(e.target.value)}
+            >
+              {Object.values(USER_ROLES).map((role) => (
+                <MenuItem key={role} value={role}>{role}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRoleSelectorOpen(false)}>Cancelar</Button>
+          <Button onClick={handleRoleChange} variant="contained" disabled={promoteLoading}>
+            Cambiar rol
+          </Button>
+        </DialogActions>
+      </Dialog>
                       {canUpdate && (
                         <Tooltip title="Editar">
                           <IconButton 
@@ -314,6 +406,7 @@ const EditIncidentForm = ({ incident, onUpdate, onCancel }) => {
     status: incident?.status || '',
     classification: incident?.classification || '',
     criticality: incident?.criticality || '',
+    resolution: incident?.resolution || '',
   });
 
   const handleSubmit = (e) => {
@@ -323,6 +416,7 @@ const EditIncidentForm = ({ incident, onUpdate, onCancel }) => {
 
   return (
     <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
+      <Typography variant="h6" sx={{ mb: 2 }}>Editar Incidente</Typography>
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Estado</InputLabel>
         <Select
@@ -337,7 +431,6 @@ const EditIncidentForm = ({ incident, onUpdate, onCancel }) => {
           ))}
         </Select>
       </FormControl>
-
       <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Clasificación</InputLabel>
         <Select
@@ -352,8 +445,7 @@ const EditIncidentForm = ({ incident, onUpdate, onCancel }) => {
           ))}
         </Select>
       </FormControl>
-
-      <FormControl fullWidth sx={{ mb: 3 }}>
+      <FormControl fullWidth sx={{ mb: 2 }}>
         <InputLabel>Criticidad</InputLabel>
         <Select
           value={formData.criticality}
@@ -367,7 +459,20 @@ const EditIncidentForm = ({ incident, onUpdate, onCancel }) => {
           ))}
         </Select>
       </FormControl>
-
+      <Typography variant="subtitle1" sx={{ mt: 3, mb: 1 }}>Resolución</Typography>
+      <TextField
+        id="resolution"
+        label="Resolución"
+        value={formData.resolution}
+        onChange={(e) => setFormData({ ...formData, resolution: e.target.value })}
+        multiline
+        minRows={4}
+        maxRows={8}
+        fullWidth
+        variant="outlined"
+        placeholder="Describe la resolución de la incidencia"
+        sx={{ mb: 3 }}
+      />
       <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
         <Button onClick={onCancel}>
           Cancelar

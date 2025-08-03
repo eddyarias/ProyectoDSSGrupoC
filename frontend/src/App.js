@@ -20,6 +20,8 @@ import Dashboard from './pages/Dashboard';
 import IncidentList from './pages/IncidentList';
 import CreateIncident from './pages/CreateIncident';
 import MFASetup from './pages/MFASetup';
+import ReportPage from './pages/ReportPage';
+import UserManagementPage from './pages/UserManagementPage';
 
 // Theme configuration
 const theme = createTheme({
@@ -125,9 +127,28 @@ function App() {
               }
             />
 
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ReportPage />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <UserManagementPage />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
             {/* Default redirect */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            
             {/* Catch all route */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

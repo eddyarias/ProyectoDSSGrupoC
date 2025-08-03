@@ -165,7 +165,7 @@ export const AuthProvider = ({ children }) => {
       const response = await authService.signup(userData);
       
       dispatch({ type: 'SET_LOADING', payload: false });
-      toast.success('Registro exitoso. Revisa tu email para confirmar tu cuenta.');
+      toast.success('Registro exitoso. Inicia sessión para continuar.');
       
       return { success: true, user: response.user };
     } catch (error) {
@@ -203,6 +203,14 @@ export const AuthProvider = ({ children }) => {
     return true; // Simplified for now
   };
 
+  // Promote user role
+  const promoteRole = async (newRole) => {
+    const res = await import('../services/authService');
+    await res.promoteUser(newRole);
+    localStorage.setItem('userRole', newRole);
+    dispatch({ type: 'SET_USER', payload: { ...state.user, user_metadata: { ...state.user.user_metadata, role: newRole } } });
+  };
+
   const value = {
     ...state,
     login,
@@ -211,6 +219,7 @@ export const AuthProvider = ({ children }) => {
     verifyMFA,
     getUserRole,
     hasPermission,
+    promoteRole,
   };
 
   return (
