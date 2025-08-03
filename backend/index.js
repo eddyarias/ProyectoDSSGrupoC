@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 // Import the Supabase client we created
 const { supabase, supabaseAdmin } = require('./supabaseClient');
 const authenticateToken = require('./authMiddleware');
@@ -11,6 +12,14 @@ const PDFDocument = require('pdfkit');
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
 const PORT = 3000;
+
+// CORS configuration
+app.use(cors({
+  origin: 'http://localhost:3001', // Frontend URL
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Add the express.json() middleware to parse JSON request bodies
 app.use(express.json());
@@ -433,7 +442,6 @@ app.get('/api/reports/monthly', authenticateToken, async (req, res) => {
 
 app.get('/api/incidents/export/pdf', authenticateToken, async (req, res) => {
   const userRole = req.user.user_metadata.role;
-
   const authorizedRoles = ['Auditor', 'Gerente de Riesgos', 'Jefe de SOC', 'Analista de Seguridad'];
   if (!authorizedRoles.includes(userRole)) {
     return res.status(403).json({ error: 'Forbidden: You do not have permission to export data.' });
