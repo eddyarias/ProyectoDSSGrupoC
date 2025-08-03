@@ -12,6 +12,7 @@ import {
   Add as AddIcon,
   Assessment as ReportsIcon,
   People as UsersIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { USER_ROLES } from '../../utils/constants';
@@ -46,12 +47,19 @@ const NavigationItems = ({ userRole }) => {
       roles: [USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC, USER_ROLES.AUDITOR, USER_ROLES.GERENTE],
     },
     {
+    text: 'Logs de Auditoría',
+    icon: <HistoryIcon />,
+    path: '/audit-logs',
+    roles: [USER_ROLES.AUDITOR], // Solo visible para auditores
+    },
+    {
       text: 'Gestión de Usuarios',
       icon: <UsersIcon />,
       path: '/users',
       roles: [USER_ROLES.JEFE_SOC, USER_ROLES.GERENTE],
     },
     // ...
+    
   ];
 
   // adminItems ya no es necesario, todo está en navigationItems

@@ -174,6 +174,18 @@ app.post('/api/incidents', authenticateToken, async (req, res) => {
 });
 
 // Endpoint to get incidents based on user role
+app.get('/api/incidents/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const userRole = req.user.user_metadata.role;
+  let query = supabase.from('incidents').select('*').eq('id', id).single();
+  if (userRole === 'Usuario') {
+    query = query.eq('creator_id', req.user.id);
+  }
+  const { data, error } = await query;
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
 app.get('/api/incidents', authenticateToken, async (req, res) => {
   const user = req.user;
   const userRole = user.user_metadata.role; // Get role from token metadata
@@ -197,6 +209,170 @@ app.get('/api/incidents', authenticateToken, async (req, res) => {
 
   res.status(200).json(data);
 });
+
+// Listar los logs de auditoría (solo para usuarios con rol "Auditor")
+
+app.get('/api/logs', authenticateToken, async (req, res) => {
+  // 1) Sólo auditores pueden ver estos logs
+  if (req.user.user_metadata.role !== 'Auditor') {
+    return res.status(403).json({ error: 'Prohibido: solo auditores.' });
+  }
+
+  try {
+    // 2) Traemos los logs puros (user_id, action, created_at)
+    const { data: rawLogs, error: logsError } = await supabase
+      .from('audit_logs')
+      .select('user_id, action, created_at')
+      .select('user_id, action, created_at, details')
+      .select('id, user_id, action, created_at, details')
+      .order('created_at', { ascending: false });
+
+    if (logsError) throw logsError;
+
+
+    // 3) Para cada log, buscamos el email con el Admin client
+    const logs = await Promise.all(
+      rawLogs.map(async log => {
+        const { data: userRec, error: userErr } =
+          await supabaseAdmin.auth.admin.getUserById(log.user_id);
+
+        const email = userRec?.user?.email || log.user_id;
+        return {
+          id:        log.id,
+          user:      email,           // ahora sí enviamos el correo
+          action:    log.action,
+          timestamp: log.created_at,
+          details:   log.details
+        };
+      })
+    );
+
+    // 4) Respondemos el array enriquecido
+    res.json(logs);
+
+  } catch (err) {
+    console.error('Error al recuperar audit_logs:', err);
+    res.status(500).json({ error: 'Error recuperando logs.' });
+  }
+});
+
+//Exportacion
+//const PDFDocument = require('pdfkit');
+
+// --- Exportar un solo log a CSV ---
+app.get('/api/logs/:id/export/csv', authenticateToken, async (req, res) => {
+  const logId = req.params.id;
+  try {
+    // 1) Traer el registro de audit_logs
+    const { data: logRec, error: logErr } = await supabase
+      .from('audit_logs')
+      .select('id, user_id, action, created_at, details')
+      .eq('id', logId)
+      .single();
+    if (logErr) throw logErr;
+
+    // 2) Obtener el email del usuario
+    const { data: userRec } = await supabaseAdmin.auth.admin.getUserById(logRec.user_id);
+    const userEmail = userRec?.user?.email || logRec.user_id;
+
+    // 3) Traer datos completos del incidente
+    const { data: incident, error: incErr } = await supabase
+      .from('incidents')
+      .select('id, title, affected_asset, criticality, status, source, evidence_url')
+      .eq('id', logRec.details.incidentId)
+      .single();
+    if (incErr) throw incErr;
+
+    // 4) Generar CSV a vuelo
+    const headers = [
+      'Log ID','Usuario','Acción','Fecha',
+      'Incidente ID','Título','Activo Afectado',
+      'Criticidad','Estado','Fuente'
+    ];
+    const row = [
+      logRec.id,
+      userEmail,
+      logRec.action,
+      logRec.created_at,
+      incident.id,
+      incident.title,
+      incident.affected_asset,
+      incident.criticality,
+      incident.status,
+      incident.source
+    ];
+
+    const csv =
+      headers.join(',') + '\n' +
+      row.map(v => `"${v}"`).join(',') + '\n';
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=log_${logRec.id}.csv`);
+    return res.send(csv);
+
+  } catch (err) {
+    console.error('CSV export error:', err);
+    return res.status(500).json({ error: 'No se pudo exportar CSV.' });
+  }
+});
+
+
+// --- Exportar un solo log a PDF ---
+app.get('/api/logs/:id/export/pdf', authenticateToken, async (req, res) => {
+  const logId = req.params.id;
+  try {
+    // 1) Log
+    const { data: logRec, error: logErr } = await supabase
+      .from('audit_logs')
+      .select('id, user_id, action, created_at, details')
+      .eq('id', logId)
+      .single();
+    if (logErr) throw logErr;
+
+    // 2) Email
+    const { data: userRec } = await supabaseAdmin.auth.admin.getUserById(logRec.user_id);
+    const userEmail = userRec?.user?.email || logRec.user_id;
+
+    // 3) Incidente
+    const { data: incident, error: incErr } = await supabase
+      .from('incidents')
+      .select('id, title, affected_asset, criticality, status, source, evidence_url')
+      .eq('id', logRec.details.incidentId)
+      .single();
+    if (incErr) throw incErr;
+
+    // 4) PDF
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=log_${logRec.id}.pdf`);
+    doc.pipe(res);
+
+    doc.fontSize(16).text(`Log #${logRec.id}`, { align: 'center' });
+    doc.moveDown();
+    doc.fontSize(12);
+    doc.text(`Usuario: ${userEmail}`);
+    doc.text(`Acción: ${logRec.action}`);
+    doc.text(`Fecha: ${new Date(logRec.created_at).toLocaleString()}`);
+    doc.moveDown();
+    doc.text(`Incidente ID: ${incident.id}`);
+    doc.text(`Título: ${incident.title}`);
+    doc.text(`Activo Afectado: ${incident.affected_asset}`);
+    doc.text(`Criticidad: ${incident.criticality}`);
+    doc.text(`Estado: ${incident.status}`);
+    doc.text(`Fuente: ${incident.source}`);
+    if (incident.evidence_url) {
+      doc.moveDown();
+      doc.text('Evidencia:', { underline: true });
+      doc.text(incident.evidence_url, { link: incident.evidence_url });
+    }
+    doc.end();
+
+  } catch (err) {
+    console.error('PDF export error:', err);
+    return res.status(500).json({ error: 'No se pudo exportar PDF.' });
+  }
+});
+
 
 // --- ADMIN ENDPOINTS ---
 app.post('/api/admin/promote', authenticateToken, async (req, res) => {
