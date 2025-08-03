@@ -41,7 +41,8 @@ const CreateIncident = () => {
       };
 
       await createIncident(incidentData);
-      setSuccess('Incidente creado exitosamente');
+      setSuccess('Incidente creado exitosamente. Redirigiendo...');
+      reset();
       
       setTimeout(() => {
         navigate('/incidents');
@@ -59,11 +60,11 @@ const CreateIncident = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom align="center">
         Crear Nuevo Incidente
       </Typography>
 
-      <Paper sx={{ p: 3, maxWidth: 800 }}>
+      <Paper sx={{ p: 3, maxWidth: 900, margin: 'auto', mt: 4 }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -77,7 +78,7 @@ const CreateIncident = () => {
         )}
 
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
-          <Grid container spacing={3}>
+          <Grid container spacing={2} direction="column">
             <Grid item xs={12}>
               <TextField
                 required
@@ -94,6 +95,7 @@ const CreateIncident = () => {
                 })}
                 error={!!errors.title}
                 helperText={errors.title?.message}
+                sx={{ mb: 2 }}
               />
             </Grid>
 
@@ -115,10 +117,11 @@ const CreateIncident = () => {
                 })}
                 error={!!errors.description}
                 helperText={errors.description?.message}
+                sx={{ mb: 2 }}
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
                 required
                 fullWidth
@@ -131,10 +134,11 @@ const CreateIncident = () => {
                 })}
                 error={!!errors.affected_asset}
                 helperText={errors.affected_asset?.message}
+                sx={{ mb: 2 }}
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 id="source"
@@ -142,10 +146,11 @@ const CreateIncident = () => {
                 name="source"
                 placeholder="ej: SIEM, Usuario, Monitoreo Automático"
                 {...register('source')}
+                sx={{ mb: 2 }}
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
                 select
                 required
@@ -159,6 +164,7 @@ const CreateIncident = () => {
                 })}
                 error={!!errors.criticality}
                 helperText={errors.criticality?.message}
+                sx={{ mb: 2 }}
               >
                 {Object.values(INCIDENT_CRITICALITY).map((criticality) => (
                   <MenuItem key={criticality} value={criticality}>
@@ -168,7 +174,31 @@ const CreateIncident = () => {
               </TextField>
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
+              <TextField
+                select
+                required
+                fullWidth
+                id="classification"
+                label="Clasificación"
+                name="classification"
+                defaultValue=""
+                {...register('classification', {
+                  required: 'La clasificación es requerida',
+                })}
+                error={!!errors.classification}
+                helperText={errors.classification?.message}
+                sx={{ mb: 2 }}
+              >
+                {Object.values(INCIDENT_CLASSIFICATION).map((classification) => (
+                  <MenuItem key={classification} value={classification}>
+                    {classification}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid item xs={12}>
               <TextField
                 type="datetime-local"
                 fullWidth
@@ -180,6 +210,7 @@ const CreateIncident = () => {
                 }}
                 defaultValue={new Date().toISOString().slice(0, 16)}
                 {...register('detected_at')}
+                sx={{ mb: 2 }}
               />
             </Grid>
 

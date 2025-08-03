@@ -2,6 +2,24 @@ import apiClient from '../utils/apiClient';
 import { API_ENDPOINTS } from '../config/api';
 
 /**
+ * Resend verification email
+ * @param {string} email
+ */
+export const resendVerificationEmail = async (email) => {
+  const response = await apiClient.post(API_ENDPOINTS.EMAIL.RESEND, { email });
+  return response.data;
+};
+
+/**
+ * Check if email is verified
+ * @param {string} email
+ */
+export const checkEmailVerified = async (email) => {
+  const response = await apiClient.get(API_ENDPOINTS.EMAIL.STATUS + `?email=${encodeURIComponent(email)}`);
+  return response.data;
+};
+
+/**
  * User signup
  * @param {Object} userData - User registration data
  * @returns {Promise} API response
