@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Button,
   TextField,
@@ -14,7 +12,7 @@ import {
   StepLabel,
   Container,
 } from '@mui/material';
-import QRCode from 'qrcode.react';
+// Removed unused imports
 import { useForm } from 'react-hook-form';
 import { enrollMFA, verifyMFA } from '../services/authService';
 import { useNavigate } from 'react-router-dom';

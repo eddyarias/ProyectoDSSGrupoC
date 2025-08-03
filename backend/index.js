@@ -1,9 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-
-
-
-// Import the Supabase client we created
 const { supabase, supabaseAdmin } = require('./supabaseClient');
 const authenticateToken = require('./authMiddleware');
 const logAction = require('./auditLogger');
@@ -14,13 +10,11 @@ const PDFDocument = require('pdfkit');
 
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT;
+const HOST = process.env.HOST;
 
-// CORS configuration
-// CORS configuration optimizada para producción
-// Reemplaza '*' por la IP de tu VM o dominio en producción para mayor seguridad
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -376,9 +370,6 @@ app.post('/api/mfa/verify', authenticateToken, async (req, res) => {
   res.status(200).json({ message: '¡Factor MFA verificado con éxito!', session: data });
 });
 
-
-// ... (mantén el código existente)
-
 // --- REPORTING ENDPOINTS ---
 
 app.get('/api/reports/monthly', authenticateToken, async (req, res) => {
@@ -520,9 +511,6 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
 });
 
 
-// Start the server
-    // Para producción en VM, asegúrate de que PORT esté configurado correctamente
-    // y que la VM permita tráfico en ese puerto
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server is listening on http://0.0.0.0:${PORT}`);
-    });
+app.listen(PORT, HOST, () => {
+  console.log(`Server is listening on http://${HOST}:${PORT}`);
+});

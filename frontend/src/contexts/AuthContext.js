@@ -198,7 +198,7 @@ export const AuthProvider = ({ children }) => {
 
   // Check if user has permission
   const hasPermission = (permission) => {
-    const userRole = getUserRole();
+    //const userRole = getUserRole();
     // This would integrate with your ROLE_PERMISSIONS from constants
     return true; // Simplified for now
   };

@@ -4,7 +4,6 @@ import {
   Drawer,
   AppBar,
   Toolbar,
-  List,
   Typography,
   Divider,
   IconButton,
@@ -12,8 +11,6 @@ import {
   Menu,
   MenuItem,
   Badge,
-  useTheme,
-  useMediaQuery,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -29,8 +26,6 @@ import { useNavigate } from 'react-router-dom';
 const drawerWidth = 240;
 
 const Layout = ({ children }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
   const { user, logout, getUserRole } = useAuth();
   
