@@ -1,5 +1,7 @@
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+// Para producción, configura REACT_APP_API_URL en tu VM, por ejemplo:
+// REACT_APP_API_URL=http://<IP_VM>:3000
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
 export const API_ENDPOINTS = {
   // Authentication

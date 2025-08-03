@@ -160,7 +160,7 @@ const IncidentList = () => {
 
   const handleExportCSV = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/incidents/export/csv', {
+      const response = await fetch('/api/incidents/export/csv', {
         headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
       });
       const blob = await response.blob();

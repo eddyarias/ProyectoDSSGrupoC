@@ -9,7 +9,7 @@
 
 Esta es la documentación para la API del backend del Sistema de Gestión de Incidentes de Seguridad (SDIS). La API permite gestionar usuarios, incidentes y reportes, e implementa un sistema de autenticación robusto con roles y MFA.
 
-**URL Base (Entorno Local):** `http://localhost:3000`
+**URL Base:** `http://0.0.0.0:3000`
 
 -----
 

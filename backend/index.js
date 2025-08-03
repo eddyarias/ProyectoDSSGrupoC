@@ -17,8 +17,10 @@ const app = express();
 const PORT = 3000;
 
 // CORS configuration
+// CORS configuration optimizada para producción
+// Reemplaza '*' por la IP de tu VM o dominio en producción para mayor seguridad
 app.use(cors({
-  origin: '*', // Permitir cualquier origen
+  origin: process.env.CORS_ORIGIN || '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -519,6 +521,8 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
 
 
 // Start the server
-app.listen(PORT, () => {
-  console.log(`Server is listening on http://localhost:${PORT}`);
-});
+    // Para producción en VM, asegúrate de que PORT esté configurado correctamente
+    // y que la VM permita tráfico en ese puerto
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server is listening on http://0.0.0.0:${PORT}`);
+    });
