@@ -458,9 +458,28 @@ app.patch('/api/incidents/:id', authenticateToken, async (req, res) => {
 
 app.post('/api/incidents/:id/upload', authenticateToken, upload.single('evidenceFile'), async (req, res) => {
   const { id } = req.params;
+  const userId = req.user.id; // ID del usuario autenticado
 
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
+  }
+
+  // Verificar que el incidente existe y que el usuario actual es el creador
+  const { data: incident, error: incidentError } = await supabase
+    .from('incidents')
+    .select('id, creator_id')
+    .eq('id', id)
+    .single();
+
+  if (incidentError) {
+    return res.status(404).json({ error: 'Incident not found.' });
+  }
+
+  // Verificar que el usuario actual es el creador del incidente
+  if (incident.creator_id !== userId) {
+    return res.status(403).json({ 
+      error: 'Forbidden: Only the incident creator can upload evidence.' 
+    });
   }
 
   const file = req.file;

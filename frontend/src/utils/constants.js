@@ -25,19 +25,15 @@ export const INCIDENT_CRITICALITY = {
 
 // Incident classifications
 export const INCIDENT_CLASSIFICATION = {
-  MALWARE: 'Malware',
-  PHISHING: 'Phishing',
-  INTRUSION: 'Intrusión',
-  DATA_BREACH: 'Fuga de Datos',
-  DOS: 'Denegación de Servicio',
-  UNAUTHORIZED_ACCESS: 'Acceso No Autorizado',
-  OTHER: 'Otro',
+  EVENT: 'Evento',
+  INCIDENT: 'Incidente',
+  BREACH: 'Brecha'
 };
 
 // Role permissions
 export const ROLE_PERMISSIONS = {
   [USER_ROLES.USUARIO]: {
-    canCreateIncidents: true,
+    canCreateIncidents: true,     // Solo los usuarios pueden crear incidentes
     canViewOwnIncidents: true,
     canViewAllIncidents: false,
     canUpdateIncidents: false,
@@ -45,26 +41,35 @@ export const ROLE_PERMISSIONS = {
     canAccessReports: false,
     canExportData: false,
     canManageUsers: false,
+    canClassifyIncidents: false,
+    canChangeIncidentStatus: false,
+    canCloseIncidents: false,
   },
   [USER_ROLES.ANALISTA]: {
-    canCreateIncidents: true,
-    canViewOwnIncidents: true,
+    canCreateIncidents: false,    // Los analistas NO pueden crear incidentes
+    canViewOwnIncidents: false,
+    canViewAllIncidents: true,    // Ver todos los incidentes y trazabilidad
+    canUpdateIncidents: true,     // Puede actualizar incidentes
+    canDeleteIncidents: false,
+    canAccessReports: false,      // NO puede ver reportes
+    canExportData: false,         // NO puede exportar datos
+    canManageUsers: false,
+    canClassifyIncidents: true,   // Clasificar como Evento/Incidente/Brecha
+    canChangeIncidentStatus: true, // Cambiar estados (Nuevo → En análisis → Contenido → Cerrado)
+    canCloseIncidents: false,     // NO puede autorizar/cerrar (solo cambiar estados)
+  },
+  [USER_ROLES.JEFE_SOC]: {
+    canCreateIncidents: false,    // Los jefes SOC NO pueden crear incidentes
+    canViewOwnIncidents: false,
     canViewAllIncidents: true,
     canUpdateIncidents: true,
     canDeleteIncidents: false,
-    canAccessReports: true,
-    canExportData: true,
-    canManageUsers: false,
-  },
-  [USER_ROLES.JEFE_SOC]: {
-    canCreateIncidents: true,
-    canViewOwnIncidents: true,
-    canViewAllIncidents: true,
-    canUpdateIncidents: true,
-    canDeleteIncidents: true,
-    canAccessReports: true,
-    canExportData: true,
-    canManageUsers: true,
+    canAccessReports: true,       // Consultar reportes y métricas
+    canExportData: false,         // NO puede exportar datos
+    canManageUsers: true,         // Ver usuarios
+    canClassifyIncidents: false,  // NO clasifica (eso es del analista)
+    canChangeIncidentStatus: false, // NO cambia estados (eso es del analista)
+    canCloseIncidents: true,      // Autorizar/cerrar incidentes y validar flujo
   },
   [USER_ROLES.AUDITOR]: {
     canCreateIncidents: false,
@@ -72,19 +77,25 @@ export const ROLE_PERMISSIONS = {
     canViewAllIncidents: true,
     canUpdateIncidents: false,
     canDeleteIncidents: false,
-    canAccessReports: true,
-    canExportData: true,
+    canAccessReports: false,      // NO puede ver reportes
+    canExportData: false,         // NO puede exportar datos
     canManageUsers: false,
+    canClassifyIncidents: false,
+    canChangeIncidentStatus: false,
+    canCloseIncidents: false,
   },
   [USER_ROLES.GERENTE]: {
-    canCreateIncidents: false,
+    canCreateIncidents: false,    // Los gerentes NO pueden crear incidentes
     canViewOwnIncidents: false,
-    canViewAllIncidents: true,
+    canViewAllIncidents: false,   // NO puede ver todos los incidentes (solo reportes)
     canUpdateIncidents: false,
     canDeleteIncidents: false,
-    canAccessReports: true,
-    canExportData: true,
-    canManageUsers: true,
+    canAccessReports: true,       // Ver/Generar reporte mensual
+    canExportData: true,          // Exportar CSV/PDF con anonimización
+    canManageUsers: false,
+    canClassifyIncidents: false,
+    canChangeIncidentStatus: false,
+    canCloseIncidents: false,
   },
 };
 

@@ -118,7 +118,7 @@ function App() {
             <Route
               path="/incidents/create"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredPermission="canCreateIncidents">
                   <Layout>
                     <CreateIncident />
                   </Layout>

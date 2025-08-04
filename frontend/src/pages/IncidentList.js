@@ -37,7 +37,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getIncidents, updateIncident, uploadEvidence, exportIncidentsPDF } from '../services/incidentService';
 import { formatDate } from '../utils/helpers';
-import { INCIDENT_STATUS, INCIDENT_CRITICALITY, INCIDENT_CLASSIFICATION, USER_ROLES } from '../utils/constants';
+import { INCIDENT_STATUS, INCIDENT_CRITICALITY, INCIDENT_CLASSIFICATION, USER_ROLES, hasPermission } from '../utils/constants';
 
 const getCriticalityColor = (criticality) => {
   switch (criticality) {
@@ -84,8 +84,11 @@ const IncidentList = () => {
   const [selectedRole, setSelectedRole] = useState(userRole);
   const [promoteLoading, setPromoteLoading] = useState(false);
 
-  const canUpdate = [USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC].includes(userRole);
-  const canExport = [USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC, USER_ROLES.AUDITOR, USER_ROLES.GERENTE].includes(userRole);
+  const canUpdate = hasPermission(userRole, 'canUpdateIncidents');
+  const canExport = hasPermission(userRole, 'canExportData');
+  const canUpload = !hasPermission(userRole, 'canClassifyIncidents') && !hasPermission(userRole, 'canAccessReports'); // Solo usuarios pueden subir evidencia
+  const canViewAllIncidents = hasPermission(userRole, 'canViewAllIncidents');
+  const canManageUsers = hasPermission(userRole, 'canManageUsers');
 
   useEffect(() => {
     fetchIncidents();
@@ -229,13 +232,15 @@ const IncidentList = () => {
               </Button>
             </>
           )}
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => navigate('/incidents/create')}
-          >
-            Crear Incidente
-          </Button>
+          {hasPermission(userRole, 'canCreateIncidents') && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => navigate('/incidents/create')}
+            >
+              Crear Incidente
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -290,6 +295,35 @@ const IncidentList = () => {
                           <ViewIcon />
                         </IconButton>
                       </Tooltip>
+                      {canUpdate && (
+                        <Tooltip title="Editar">
+                          <IconButton 
+                            size="small"
+                            onClick={() => handleEdit(incident)}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {canUpload && (
+                        <Tooltip title="Subir evidencia">
+                          <IconButton 
+                            size="small"
+                            onClick={() => handleUpload(incident.id)}
+                          >
+                            <UploadIcon />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+
       {/* Details Dialog */}
       <IncidentDetails
         incident={detailsDialog.incident}
@@ -298,6 +332,7 @@ const IncidentList = () => {
         canEdit={canUpdate}
         show={detailsDialog.open}
       />
+
       {/* Role Selector Dialog */}
       <Dialog open={roleSelectorOpen} onClose={() => setRoleSelectorOpen(false)}>
         <DialogTitle>Cambiar vista de rol</DialogTitle>
@@ -322,32 +357,6 @@ const IncidentList = () => {
           </Button>
         </DialogActions>
       </Dialog>
-                      {canUpdate && (
-                        <Tooltip title="Editar">
-                          <IconButton 
-                            size="small"
-                            onClick={() => handleEdit(incident)}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      <Tooltip title="Subir evidencia">
-                        <IconButton 
-                          size="small"
-                          onClick={() => handleUpload(incident.id)}
-                        >
-                          <UploadIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
 
       {/* Edit Dialog */}
       <Dialog 

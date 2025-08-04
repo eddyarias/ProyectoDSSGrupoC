@@ -24,7 +24,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getIncidents } from '../services/incidentService';
 import { getMonthlyReport } from '../services/reportService';
 import { formatDate, getRelativeTime } from '../utils/helpers';
-import { INCIDENT_CRITICALITY, USER_ROLES } from '../utils/constants';
+import { INCIDENT_CRITICALITY, USER_ROLES, hasPermission } from '../utils/constants';
 
 const StatCard = ({ title, value, icon, color = 'primary' }) => (
   <Card>
@@ -77,11 +77,14 @@ const Dashboard = () => {
         setError('');
 
         // Fetch incidents
-        const incidentsData = await getIncidents();
-        setIncidents(incidentsData);
+        // Solo cargar incidentes si el usuario puede verlos
+        if (hasPermission(userRole, 'canViewAllIncidents') || hasPermission(userRole, 'canViewOwnIncidents')) {
+          const incidentsData = await getIncidents();
+          setIncidents(incidentsData);
+        }
 
         // Fetch reports if user has permission
-        if ([USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC, USER_ROLES.AUDITOR, USER_ROLES.GERENTE].includes(userRole)) {
+        if (hasPermission(userRole, 'canAccessReports')) {
           try {
             const reportResponse = await getMonthlyReport();
             setReportData(reportResponse);
@@ -167,53 +170,55 @@ const Dashboard = () => {
       </Grid>
 
       <Grid container spacing={3}>
-        {/* Recent Incidents */}
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Incidentes Recientes
-            </Typography>
-            {recentIncidents.length === 0 ? (
-              <Typography color="textSecondary">
-                No hay incidentes recientes
+        {/* Recent Incidents - Solo para usuarios que pueden ver incidentes */}
+        {(hasPermission(userRole, 'canViewAllIncidents') || hasPermission(userRole, 'canViewOwnIncidents')) && (
+          <Grid item xs={12} md={reportData ? 8 : 12}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Incidentes Recientes
               </Typography>
-            ) : (
-              <List>
-                {recentIncidents.map((incident) => (
-                  <ListItem key={incident.id} divider>
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="subtitle1">
-                            {incident.title}
-                          </Typography>
-                          <Chip
-                            label={incident.criticality || 'Sin criticidad'}
-                            color={getCriticalityColor(incident.criticality)}
-                            size="small"
-                          />
-                        </Box>
-                      }
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="textSecondary">
-                            {incident.affected_asset} • {getRelativeTime(incident.created_at)}
-                          </Typography>
-                          <Typography variant="body2">
-                            Estado: {incident.status || 'Sin estado'}
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            )}
-          </Paper>
-        </Grid>
+              {recentIncidents.length === 0 ? (
+                <Typography color="textSecondary">
+                  No hay incidentes recientes
+                </Typography>
+              ) : (
+                <List>
+                  {recentIncidents.map((incident) => (
+                    <ListItem key={incident.id} divider>
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="subtitle1">
+                              {incident.title}
+                            </Typography>
+                            <Chip
+                              label={incident.criticality || 'Sin criticidad'}
+                              color={getCriticalityColor(incident.criticality)}
+                              size="small"
+                            />
+                          </Box>
+                        }
+                        secondary={
+                          <Box>
+                            <Typography variant="body2" color="textSecondary">
+                              {incident.affected_asset} • {getRelativeTime(incident.created_at)}
+                            </Typography>
+                            <Typography variant="body2">
+                              Estado: {incident.status || 'Sin estado'}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Paper>
+          </Grid>
+        )}
 
-        {/* Monthly Report Summary */}
-        {reportData && (
+        {/* Monthly Report Summary - Solo para roles con acceso a reportes */}
+        {reportData && hasPermission(userRole, 'canAccessReports') && (
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" gutterBottom>

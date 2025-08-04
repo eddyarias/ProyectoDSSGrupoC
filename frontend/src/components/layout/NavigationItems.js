@@ -38,7 +38,7 @@ const NavigationItems = ({ userRole }) => {
       text: 'Crear Incidente',
       icon: <AddIcon />,
       path: '/incidents/create',
-      roles: [USER_ROLES.USUARIO, USER_ROLES.ANALISTA, USER_ROLES.JEFE_SOC],
+      roles: [USER_ROLES.USUARIO], // Solo usuarios pueden crear incidentes
     },
     {
       text: 'Reportes',
