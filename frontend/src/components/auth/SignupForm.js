@@ -9,6 +9,10 @@ import {
   CircularProgress,
   Container,
   Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,6 +33,7 @@ const SignupForm = () => {
   } = useForm();
 
   const password = watch('password');
+  const [role, setRole] = useState('Usuario');
 
   const onSubmit = async (data) => {
     try {
@@ -37,6 +42,9 @@ const SignupForm = () => {
       
       // Remove confirmPassword from data before sending
       const { confirmPassword, ...userData } = data;
+      
+      // Add role to userData
+      userData.role = role;
       
       const result = await signup(userData);
       
@@ -139,6 +147,24 @@ const SignupForm = () => {
               error={!!errors.confirmPassword}
               helperText={errors.confirmPassword?.message}
             />
+
+            <FormControl fullWidth margin="normal">
+              <InputLabel id="role-label">Rol</InputLabel>
+              <Select
+                labelId="role-label"
+                id="role"
+                value={role}
+                label="Rol"
+                onChange={(e) => setRole(e.target.value)}
+                required
+              >
+                <MenuItem value="Usuario">Usuario</MenuItem>
+                <MenuItem value="Analista de Seguridad">Analista de Seguridad</MenuItem>
+                <MenuItem value="Jefe de SOC">Jefe de SOC</MenuItem>
+                <MenuItem value="Auditor">Auditor</MenuItem>
+                <MenuItem value="Gerente de Riesgos">Gerente de Riesgos</MenuItem>
+              </Select>
+            </FormControl>
 
             <Button
               type="submit"

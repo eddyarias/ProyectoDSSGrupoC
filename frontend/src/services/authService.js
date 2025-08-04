@@ -78,6 +78,25 @@ export const verifyMFA = async (verificationData) => {
 };
 
 /**
+ * Delete MFA factor (cancel setup)
+ * @param {string} factorId
+ * @returns {Promise} API response
+ */
+export const deleteMFA = async (factorId) => {
+  const response = await apiClient.post(API_ENDPOINTS.MFA.DELETE, { factorId });
+  return response.data;
+};
+
+/**
+ * List MFA factors for the current user
+ * @returns {Promise} API response with user's MFA factors
+ */
+export const listMFAFactors = async () => {
+  const response = await apiClient.get(API_ENDPOINTS.MFA.FACTORS);
+  return response.data;
+};
+
+/**
  * Promote user role (admin only)
  * @param {string} newRole - New role to assign
  * @returns {Promise} API response
@@ -85,4 +104,21 @@ export const verifyMFA = async (verificationData) => {
 export const promoteUser = async (newRole) => {
   const response = await apiClient.post(API_ENDPOINTS.ADMIN.PROMOTE, { newRole });
   return response.data;
+};
+
+// Exportar objeto authService con todas las funciones agrupadas
+export const authService = {
+  signup,
+  login,
+  verifyLogin,
+  logout,
+  mfa: {
+    enrollMFA,
+    verifyMFA,
+    deleteMFA,
+    listMFAFactors,
+  },
+  admin: {
+    promoteUser,
+  },
 };

@@ -30,11 +30,17 @@ app.post('/api/auth/signup', async (req, res) => {
   console.log('--SignUp Request Received--');
   console.log('Request Body:', req.body);
 
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
 
   // Basic validation
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+  if (!email || !password || !role) {
+    return res.status(400).json({ error: 'Email, password y rol son requeridos.' });
+  }
+
+  // Validar que el rol sea uno permitido
+  const validRoles = ['Usuario', 'Analista de Seguridad', 'Jefe de SOC', 'Auditor', 'Gerente de Riesgos'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ error: 'Rol inválido.' });
   }
 
   // Use Supabase to sign up the user
@@ -43,8 +49,7 @@ app.post('/api/auth/signup', async (req, res) => {
     password: password,
     options: {
       data: {
-        // Assign the default role 'Usuario' as defined in your project plan
-        role: 'Usuario' 
+        role: role
       }
     }
   });
@@ -325,21 +330,35 @@ app.post('/api/incidents/:id/upload', authenticateToken, upload.single('evidence
 app.post('/api/mfa/enroll', authenticateToken, async (req, res) => {
   // The user information is already attached to the request by our middleware.
   // Supabase's mfa.enroll() automatically uses the authenticated user from the JWT.
+  
+  // Crear un nombre único para permitir múltiples dispositivos MFA
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const deviceNumber = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  const uniqueFriendlyName = `${req.user.email}-device-${deviceNumber}-${timestamp}`;
+  
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: 'totp',
     issuer: 'SDIS Project',
-    friendlyName: req.user.email,
+    friendlyName: uniqueFriendlyName,
   });
 
+  if (error && error.message.includes('already exists')) {
+    // Si el error es que ya existe un factor, listar los factores del usuario
+    const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+    if (factorsError) {
+      return res.status(400).json({ error: error.message, factorsError: factorsError.message });
+    }
+    // Enviar los factores existentes al frontend
+    return res.status(400).json({
+      error: error.message,
+      existingFactors: factorsData,
+    });
+  }
   if (error) {
     return res.status(400).json({ error: error.message });
   }
 
   const cleanedSvg = data.totp.qr_code.replace(/(\r\n|\n|\r)/gm, "");
-
-  // The response contains a QR code as an SVG string.
-  // In a real frontend, you would render this SVG.
-  // For our API testing, we will just send the string back.
   res.status(200).json({
     factorId: data.id,
     qr_code_svg: cleanedSvg,
@@ -348,26 +367,46 @@ app.post('/api/mfa/enroll', authenticateToken, async (req, res) => {
 
 app.post('/api/mfa/verify', authenticateToken, async (req, res) => {
   const { factorId, code } = req.body;
-
-  // Validación básica
   if (!factorId || !code) {
     return res.status(400).json({ error: 'Se requieren factorId y code.' });
   }
-
-  // Esta función verifica el código y marca el factor como 'verified'
   const { data, error } = await supabase.auth.mfa.challengeAndVerify({
     factorId,
     code,
   });
 
   if (error) {
-    // Esto fallará si el código es incorrecto
     return res.status(400).json({ error: error.message });
   }
+    res.status(200).json({ message: '¡Factor MFA verificado con éxito!', session: data });
+});
 
-  // Una vez verificado, MFA está activo para el usuario.
-  // La respuesta contiene la sesión del usuario.
-  res.status(200).json({ message: '¡Factor MFA verificado con éxito!', session: data });
+// Endpoint para listar los factores MFA del usuario
+app.get('/api/mfa/factors', authenticateToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    
+    // Filtrar y formatear la información de los factores
+    const factors = data.all.map(factor => ({
+      id: factor.id,
+      friendlyName: factor.friendly_name,
+      factorType: factor.factor_type,
+      status: factor.status,
+      createdAt: factor.created_at,
+      updatedAt: factor.updated_at
+    }));
+    
+    res.status(200).json({ 
+      factors,
+      total: factors.length 
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error interno del servidor al obtener factores MFA' });
+  }
 });
 
 // --- REPORTING ENDPOINTS ---
@@ -439,6 +478,19 @@ app.get('/api/reports/monthly', authenticateToken, async (req, res) => {
     console.error("Error generating monthly report:", error);
     res.status(500).json({ error: 'Failed to generate monthly report.' });
   }
+});
+
+// Endpoint para eliminar un factor MFA (por ejemplo, si el usuario cancela la configuración)
+app.post('/api/mfa/delete', authenticateToken, async (req, res) => {
+  const { factorId } = req.body;
+  if (!factorId) {
+    return res.status(400).json({ error: 'Se requiere factorId.' });
+  }
+  const { error } = await supabase.auth.mfa.unenroll({ factorId });
+  if (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  res.status(200).json({ message: 'Factor MFA eliminado correctamente.' });
 });
 
 app.get('/api/incidents/export/pdf', authenticateToken, async (req, res) => {

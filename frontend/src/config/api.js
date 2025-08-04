@@ -13,6 +13,8 @@ export const API_ENDPOINTS = {
   MFA: {
     ENROLL: `${API_BASE_URL}/mfa/enroll`,
     VERIFY: `${API_BASE_URL}/mfa/verify`,
+    DELETE: `${API_BASE_URL}/mfa/delete`,
+    FACTORS: `${API_BASE_URL}/mfa/factors`,
   },
   
   // Incidents
