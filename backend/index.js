@@ -687,8 +687,11 @@ app.get('/api/reports/monthly', authenticateToken,
     const role = req.user.user_metadata.role;
     if (role === "Auditor") {
       return checkTimeAccess("Ver", "Reportes mensuales")(req, res, next);
+    } else if (role === "Analista de Seguridad" || role === "Jefe de SOC" || role === "Gerente de Riesgos") {
+      return checkTimeAccess("Generar", "Reporte mensual")(req, res, next);
+    } else {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to access reports.' });
     }
-    return checkTimeAccess("Generar", "Reporte mensual")(req, res, next);
   },
   async (req, res) => {
   const userRole = req.user.user_metadata.role;

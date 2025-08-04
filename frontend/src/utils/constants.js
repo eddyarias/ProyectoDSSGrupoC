@@ -51,7 +51,7 @@ export const ROLE_PERMISSIONS = {
     canViewAllIncidents: true,    // Ver todos los incidentes y trazabilidad
     canUpdateIncidents: true,     // Puede actualizar incidentes
     canDeleteIncidents: false,
-    canAccessReports: false,      // NO puede ver reportes
+    canAccessReports: true,       // PUEDE ver reportes
     canExportData: false,         // NO puede exportar datos
     canManageUsers: false,
     canClassifyIncidents: true,   // Clasificar como Evento/Incidente/Brecha
@@ -77,7 +77,7 @@ export const ROLE_PERMISSIONS = {
     canViewAllIncidents: true,
     canUpdateIncidents: false,
     canDeleteIncidents: false,
-    canAccessReports: false,      // NO puede ver reportes
+    canAccessReports: true,       // PUEDE ver reportes
     canExportData: false,         // NO puede exportar datos
     canManageUsers: false,
     canClassifyIncidents: false,
