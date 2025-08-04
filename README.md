@@ -15,10 +15,7 @@ Sistema de Gestión de Incidentes (SDIS) - Proyecto del Grupo C
    cd backend
    ```
 
-2. Copia el archivo de ejemplo de variables de entorno:
-   ```bash
-   copy .env.example .env
-   ```
+2. Crea el .env
 
 3. Edita el archivo `.env` con tus credenciales reales:
    ```
@@ -41,10 +38,7 @@ Sistema de Gestión de Incidentes (SDIS) - Proyecto del Grupo C
    cd frontend
    ```
 
-2. Copia el archivo de ejemplo de variables de entorno:
-   ```bash
-   copy .env.example .env
-   ```
+2. Crea el .env
 
 3. Edita el archivo `.env` si es necesario (normalmente no requiere cambios para desarrollo local).
 
@@ -58,7 +52,7 @@ Sistema de Gestión de Incidentes (SDIS) - Proyecto del Grupo C
 ### Backend
 ```bash
 cd backend
-npm start
+node index.js
 ```
 
 ### Frontend

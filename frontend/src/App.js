@@ -22,6 +22,7 @@ import CreateIncident from './pages/CreateIncident';
 import MFASetup from './pages/MFASetup';
 import ReportPage from './pages/ReportPage';
 import UserManagementPage from './pages/UserManagementPage';
+import AuditLogPage from './pages/AuditLogPage';
 
 // Theme configuration
 const theme = createTheme({
@@ -84,6 +85,14 @@ function App() {
             <Route path="/signup" element={<SignupForm />} />
             <Route path="/mfa-verify" element={<MFAVerification />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
+            <Route path="/audit-logs" element={<ProtectedRoute allowedRoles={['auditor']}>
+      <Layout>
+        <AuditLogPage />
+      </Layout>
+    </ProtectedRoute>} />
+
+
+
 
             {/* Protected routes */}
             <Route
