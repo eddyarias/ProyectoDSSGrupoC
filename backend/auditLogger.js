@@ -1,15 +1,16 @@
 const { supabase } = require('./supabaseClient');
 const crypto = require('crypto');
+const { encrypt } = require('./utils/cryptoHelper');
 
 /**
- * Registra una acción en el log de auditoría con una cadena de hashes.
+ * Registra una acción en el log de auditoría con cifrado AES y cadena de hashes.
  * @param {string} userId - El ID del usuario que realiza la acción.
- * @param {string} action - El tipo de acción (ej. 'CREATE_INCIDENT').
- * @param {object} details - Un objeto JSON con detalles de la acción.
+ * @param {string} action - El tipo de acción (ej. 'CREATE_INCIDENT', 'CHANGE_ROLE').
+ * @param {object} details - Detalles del evento (se cifran).
  */
 async function logAction(userId, action, details) {
   try {
-    // 1. Obtener el hash del último registro de auditoría
+    // 1. Obtener el último hash
     const { data: lastLog, error: lastLogError } = await supabase
       .from('audit_logs')
       .select('current_hash')
@@ -18,38 +19,34 @@ async function logAction(userId, action, details) {
       .single();
 
     if (lastLogError && lastLogError.code !== 'PGRST116') {
-      // PGRST116 significa 'no rows found', lo cual es normal si es el primer log.
-      // Cualquier otro error es un problema.
       throw lastLogError;
     }
 
-    const previousHash = lastLog ? lastLog.current_hash : '0'; // Si no hay logs, el hash previo es '0'
+    const previousHash = lastLog ? lastLog.current_hash : '0';
 
-    // 2. Preparar los datos del nuevo registro
+    // 2. Cifrar los detalles sensibles
+    const encryptedDetails = encrypt(JSON.stringify(details));
+
     const logEntryData = {
       user_id: userId,
-      action: action,
-      details: details,
+      action,
+      details: encryptedDetails, // Guardamos el JSON cifrado
       previous_hash: previousHash,
     };
-    
-    // 3. Crear el hash para el registro actual
-    // El hash se basa en todos los datos del registro para asegurar la integridad.
+
+    // 3. Crear hash de integridad
     const dataToHash = JSON.stringify(logEntryData);
     const currentHash = crypto.createHash('sha256').update(dataToHash).digest('hex');
 
-    // 4. Insertar el nuevo registro en la base de datos
+    // 4. Insertar en la base de datos
     const { error: insertError } = await supabase
       .from('audit_logs')
       .insert([{ ...logEntryData, current_hash: currentHash }]);
 
-    if (insertError) {
-      throw insertError;
-    }
+    if (insertError) throw insertError;
 
-    console.log(`Audit log created for action: ${action}`);
   } catch (error) {
-    console.error('Failed to create audit log:', error);
+    console.error('❌ Failed to create audit log:', error);
   }
 }
 

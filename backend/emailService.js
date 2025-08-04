@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
+const { supabaseAdmin } = require('./supabaseClient');
 require('dotenv').config();
 
-// Create a reusable transporter object using the SMTP transport for Gmail
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -10,26 +10,35 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-/**
- * Sends an alert email.
- * @param {string} subject - The subject of the email.
- * @param {string} textBody - The plain text body of the email.
- */
-async function sendAlertEmail(subject, textBody) {
-  // For now, we'll send the email to a hardcoded recipient (e.g., the sender)
-  // In a real app, this would be based on user roles (e.g., Jefe de SOC).
-  const mailOptions = {
-    from: process.env.GMAIL_USER,
-    to: process.env.GMAIL_USER, // Sending to self for testing
-    subject: subject,
-    text: textBody,
-  };
-
+async function sendAlertEmail(subject, textBody, user) {
   try {
-    let info = await transporter.sendMail(mailOptions);
-    console.log('Email sent: ' + info.response);
+    let targetEmail;
+
+    if (user?.id) {
+      try {
+        const { data: userRec, error } = await supabaseAdmin.auth.admin.getUserById(user.id);
+        if (error) throw error;
+        targetEmail = userRec?.user?.email;
+      } catch (e) {
+        console.warn('⚠️ No se pudo obtener por UUID, usando email directo');
+        targetEmail = user?.email;
+      }
+    } else {
+      targetEmail = user?.email || process.env.GMAIL_USER;
+    }
+
+    const mailOptions = {
+      from: process.env.GMAIL_USER,
+      to: targetEmail,
+      subject,
+      text: textBody,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email enviado a:', targetEmail);
+    return info;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('❌ Error enviando email:', error);
   }
 }
 

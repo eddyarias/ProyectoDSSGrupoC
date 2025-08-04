@@ -1,12 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const { supabase, supabaseAdmin } = require('./supabaseClient');
-const authenticateToken = require('./authMiddleware');
+const { authenticateToken, requireRole } = require('./authMiddleware');
 const logAction = require('./auditLogger');
 const sendAlertEmail = require('./emailService');
 const crypto = require('crypto');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
+const { decrypt } = require('./utils/cryptoHelper');
+const checkTimeAccess = require('./middlewares/checkTimeAccess');
 
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
@@ -144,120 +146,173 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
   res.status(200).json({ message: 'Logged out successfully.' });
 });
 
-app.post('/api/incidents', authenticateToken, async (req, res) => {
-  // The user's ID comes from the middleware, not the request body
-  const creator_id = req.user.id;
+// Crear incidente (con TRBAC de horario)
+app.post('/api/incidents', 
+  authenticateToken, 
+  checkTimeAccess("Crear", "Incidente"), // TRBAC
+  async (req, res) => {
+    const creator_id = req.user.id;
+    const { title, description, detected_at, source, affected_asset, criticality } = req.body;
 
-  // Get incident details from the request body
-  const { title, description, detected_at, source, affected_asset, criticality } = req.body;
+    const { data, error } = await supabase
+      .from('incidents')
+      .insert([{ 
+        title, description, detected_at, source, affected_asset, criticality, creator_id 
+      }])
+      .select()
+      .single();
 
-  // Insert the new incident into the database
-  const { data, error } = await supabase
-    .from('incidents')
-    .insert([{ 
-      title, 
-      description, 
-      detected_at, 
-      source, 
-      affected_asset, 
-      criticality, 
-      creator_id // Assign the logged-in user as the creator
-    }])
-    .select() // .select() returns the newly created row
-    .single(); // .single() returns it as an object instead of an array
+    if (error) return res.status(400).json({ error: error.message });
 
-  if (error) {
-    return res.status(400).json({ error: error.message });
-  }
-
-  if (!error) {
-    // Añade el registro de auditoría
     await logAction(creator_id, 'CREATE_INCIDENT', { incidentId: data.id, title: data.title });
-  }
-
-  res.status(201).json(data);
+    res.status(201).json(data);
 });
+
 
 // Endpoint to get incidents based on user role
-app.get('/api/incidents/:id', authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const userRole = req.user.user_metadata.role;
-  let query = supabase.from('incidents').select('*').eq('id', id).single();
-  if (userRole === 'Usuario') {
-    query = query.eq('creator_id', req.user.id);
-  }
-  const { data, error } = await query;
-  if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
+app.get('/api/incidents/:id', 
+  authenticateToken,
+  checkTimeAccess("Ver", "Incidentes"), 
+  async (req, res) => {
+    const { id } = req.params;
+    const userRole = req.user.user_metadata.role;
+    let query = supabase.from('incidents').select('*').eq('id', id).single();
+    if (userRole === 'Usuario') {
+      query = query.eq('creator_id', req.user.id);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
 });
 
-app.get('/api/incidents', authenticateToken, async (req, res) => {
-  const user = req.user;
-  const userRole = user.user_metadata.role; // Get role from token metadata
 
-  console.log(`User ${user.email} with role ${userRole} is requesting incidents.`);
+// Listar incidentes (TRBAC)
+app.get('/api/incidents', 
+  authenticateToken,
+  checkTimeAccess("Ver", "Incidentes"),
+  async (req, res) => {
+    const user = req.user;
+    const userRole = user.user_metadata.role;
 
-  let query = supabase.from('incidents').select('*');
+    console.log(`User ${user.email} with role ${userRole} is requesting incidents.`);
 
-  // If the user has the 'Usuario' role, filter to show only their incidents.
-  if (userRole === 'Usuario') {
-    query = query.eq('creator_id', user.id);
-  }
+    let query = supabase.from('incidents').select('*');
+    if (userRole === 'Usuario') {
+      query = query.eq('creator_id', user.id);
+    }
 
-  // For any other role, the original query (select all) will be used.
-  
-  const { data, error } = await query;
-
-  if (error) {
-    return res.status(400).json({ error: error.message });
-  }
-
-  res.status(200).json(data);
+    const { data, error } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(200).json(data);
 });
 
 // Listar los logs de auditoría (solo para usuarios con rol "Auditor")
 
 app.get('/api/logs', authenticateToken, async (req, res) => {
-  // 1) Sólo auditores pueden ver estos logs
   if (req.user.user_metadata.role !== 'Auditor') {
     return res.status(403).json({ error: 'Prohibido: solo auditores.' });
   }
 
   try {
-    // 2) Traemos los logs puros (user_id, action, created_at)
     const { data: rawLogs, error: logsError } = await supabase
       .from('audit_logs')
-      .select('user_id, action, created_at')
-      .select('user_id, action, created_at, details')
       .select('id, user_id, action, created_at, details')
       .order('created_at', { ascending: false });
 
     if (logsError) throw logsError;
 
-
-    // 3) Para cada log, buscamos el email con el Admin client
     const logs = await Promise.all(
       rawLogs.map(async log => {
-        const { data: userRec, error: userErr } =
-          await supabaseAdmin.auth.admin.getUserById(log.user_id);
-
+        const { data: userRec } = await supabaseAdmin.auth.admin.getUserById(log.user_id);
         const email = userRec?.user?.email || log.user_id;
+
+        let details;
+        try {
+          details = JSON.parse(decrypt(log.details)); // 🔑 DESCIFRAR
+        } catch (err) {
+          details = { error: 'No se pudo descifrar detalles' };
+        }
+
         return {
-          id:        log.id,
-          user:      email,           // ahora sí enviamos el correo
-          action:    log.action,
+          id: log.id,
+          user: email,
+          action: log.action,
           timestamp: log.created_at,
-          details:   log.details
+          details
         };
       })
     );
 
-    // 4) Respondemos el array enriquecido
     res.json(logs);
-
   } catch (err) {
     console.error('Error al recuperar audit_logs:', err);
     res.status(500).json({ error: 'Error recuperando logs.' });
+  }
+});
+
+// Endpoint para obtener el detalle de un log específico
+app.get('/api/logs/:id', authenticateToken, async (req, res) => {
+  try {
+    // Solo Auditores pueden ver el detalle
+    if (req.user.user_metadata.role !== 'Auditor') {
+      return res.status(403).json({ error: 'Prohibido: solo auditores.' });
+    }
+
+    const { id } = req.params;
+    const { data: logRec, error: logErr } = await supabase
+      .from('audit_logs')
+      .select('id, user_id, action, created_at, details')
+      .eq('id', id)
+      .single();
+
+    if (logErr) throw logErr;
+
+    // Obtener email del usuario que hizo la acción
+    const { data: userRec } = await supabaseAdmin.auth.admin.getUserById(logRec.user_id);
+    const userEmail = userRec?.user?.email || logRec.user_id;
+
+    // 🔑 Descifrar details
+    let decryptedDetails = {};
+    try {
+      decryptedDetails = JSON.parse(decrypt(logRec.details));
+    } catch (err) {
+      console.error('Error descifrando detalles del log:', err);
+      decryptedDetails = { error: 'No se pudo descifrar los detalles.' };
+    }
+
+    let extraData = {};
+
+    if (['CREATE_INCIDENT', 'UPDATE_INCIDENT'].includes(logRec.action)) {
+      const { data: incident } = await supabase
+        .from('incidents')
+        .select('id, title, affected_asset, criticality, status')
+        .eq('id', decryptedDetails.incidentId) // Usamos el descifrado
+        .maybeSingle();
+
+      extraData = {
+        incidentId: incident?.id || null,
+        title: incident?.title || null,
+        affected_asset: incident?.affected_asset || null,
+        criticality: incident?.criticality || null,
+        status: incident?.status || null,
+      };
+    } else if (logRec.action === 'CHANGE_ROLE') {
+      extraData = {
+        targetUserId: decryptedDetails?.targetUserId || null,
+        newRole: decryptedDetails?.newRole || null,
+      };
+    }
+
+    res.json({
+      id: logRec.id,
+      user: userEmail,
+      action: logRec.action,
+      timestamp: logRec.created_at,
+      details: extraData,
+    });
+  } catch (err) {
+    console.error('Error obteniendo detalle del log:', err);
+    res.status(500).json({ error: 'No se pudo obtener el detalle del log.' });
   }
 });
 
@@ -268,7 +323,6 @@ app.get('/api/logs', authenticateToken, async (req, res) => {
 app.get('/api/logs/:id/export/csv', authenticateToken, async (req, res) => {
   const logId = req.params.id;
   try {
-    // 1) Traer el registro de audit_logs
     const { data: logRec, error: logErr } = await supabase
       .from('audit_logs')
       .select('id, user_id, action, created_at, details')
@@ -276,48 +330,53 @@ app.get('/api/logs/:id/export/csv', authenticateToken, async (req, res) => {
       .single();
     if (logErr) throw logErr;
 
-    // 2) Obtener el email del usuario
     const { data: userRec } = await supabaseAdmin.auth.admin.getUserById(logRec.user_id);
     const userEmail = userRec?.user?.email || logRec.user_id;
 
-    // 3) Traer datos completos del incidente
-    const { data: incident, error: incErr } = await supabase
-      .from('incidents')
-      .select('id, title, affected_asset, criticality, status, source, evidence_url')
-      .eq('id', logRec.details.incidentId)
-      .single();
-    if (incErr) throw incErr;
+    // 🔑 Descifrar details
+    let decryptedDetails = {};
+    try {
+      decryptedDetails = JSON.parse(decrypt(logRec.details));
+    } catch {
+      decryptedDetails = {};
+    }
 
-    // 4) Generar CSV a vuelo
-    const headers = [
-      'Log ID','Usuario','Acción','Fecha',
-      'Incidente ID','Título','Activo Afectado',
-      'Criticidad','Estado','Fuente'
-    ];
-    const row = [
-      logRec.id,
-      userEmail,
-      logRec.action,
-      logRec.created_at,
-      incident.id,
-      incident.title,
-      incident.affected_asset,
-      incident.criticality,
-      incident.status,
-      incident.source
-    ];
+    let headers, row;
 
-    const csv =
-      headers.join(',') + '\n' +
-      row.map(v => `"${v}"`).join(',') + '\n';
+    if (['CREATE_INCIDENT', 'UPDATE_INCIDENT'].includes(logRec.action)) {
+      const { data: incident } = await supabase
+        .from('incidents')
+        .select('id, title, affected_asset, criticality, status, source, evidence_url')
+        .eq('id', decryptedDetails.incidentId)
+        .maybeSingle();
+
+      headers = [
+        'Log ID', 'Usuario', 'Acción', 'Fecha',
+        'Incidente ID', 'Título', 'Activo Afectado',
+        'Criticidad', 'Estado', 'Fuente'
+      ];
+      row = [
+        logRec.id, userEmail, logRec.action, logRec.created_at,
+        incident?.id || '-', incident?.title || '-', incident?.affected_asset || '-',
+        incident?.criticality || '-', incident?.status || '-', incident?.source || '-'
+      ];
+    } else if (logRec.action === 'CHANGE_ROLE') {
+      headers = ['Log ID', 'Usuario', 'Acción', 'Fecha', 'Usuario Afectado', 'Nuevo Rol'];
+      row = [
+        logRec.id, userEmail, logRec.action, logRec.created_at,
+        decryptedDetails?.targetUserId || '-', decryptedDetails?.newRole || '-'
+      ];
+    }
+
+    const csv = headers.join(',') + '\n' + row.map(v => `"${v}"`).join(',') + '\n';
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=log_${logRec.id}.csv`);
-    return res.send(csv);
+    res.send(csv);
 
   } catch (err) {
     console.error('CSV export error:', err);
-    return res.status(500).json({ error: 'No se pudo exportar CSV.' });
+    res.status(500).json({ error: 'No se pudo exportar CSV.' });
   }
 });
 
@@ -326,7 +385,6 @@ app.get('/api/logs/:id/export/csv', authenticateToken, async (req, res) => {
 app.get('/api/logs/:id/export/pdf', authenticateToken, async (req, res) => {
   const logId = req.params.id;
   try {
-    // 1) Log
     const { data: logRec, error: logErr } = await supabase
       .from('audit_logs')
       .select('id, user_id, action, created_at, details')
@@ -334,47 +392,59 @@ app.get('/api/logs/:id/export/pdf', authenticateToken, async (req, res) => {
       .single();
     if (logErr) throw logErr;
 
-    // 2) Email
     const { data: userRec } = await supabaseAdmin.auth.admin.getUserById(logRec.user_id);
     const userEmail = userRec?.user?.email || logRec.user_id;
 
-    // 3) Incidente
-    const { data: incident, error: incErr } = await supabase
-      .from('incidents')
-      .select('id, title, affected_asset, criticality, status, source, evidence_url')
-      .eq('id', logRec.details.incidentId)
-      .single();
-    if (incErr) throw incErr;
+    // 🔑 Descifrar details
+    let decryptedDetails = {};
+    try {
+      decryptedDetails = JSON.parse(decrypt(logRec.details));
+    } catch {
+      decryptedDetails = {};
+    }
 
-    // 4) PDF
     const doc = new PDFDocument({ margin: 50 });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=log_${logRec.id}.pdf`);
     doc.pipe(res);
 
-    doc.fontSize(16).text(`Log #${logRec.id}`, { align: 'center' });
+    doc.fontSize(16).text(`Detalle del Log #${logRec.id}`, { align: 'center' });
     doc.moveDown();
-    doc.fontSize(12);
-    doc.text(`Usuario: ${userEmail}`);
+    doc.fontSize(12).text(`Usuario: ${userEmail}`);
     doc.text(`Acción: ${logRec.action}`);
     doc.text(`Fecha: ${new Date(logRec.created_at).toLocaleString()}`);
     doc.moveDown();
-    doc.text(`Incidente ID: ${incident.id}`);
-    doc.text(`Título: ${incident.title}`);
-    doc.text(`Activo Afectado: ${incident.affected_asset}`);
-    doc.text(`Criticidad: ${incident.criticality}`);
-    doc.text(`Estado: ${incident.status}`);
-    doc.text(`Fuente: ${incident.source}`);
-    if (incident.evidence_url) {
-      doc.moveDown();
-      doc.text('Evidencia:', { underline: true });
-      doc.text(incident.evidence_url, { link: incident.evidence_url });
+
+    if (['CREATE_INCIDENT', 'UPDATE_INCIDENT'].includes(logRec.action)) {
+      const { data: incident } = await supabase
+        .from('incidents')
+        .select('id, title, affected_asset, criticality, status, source, evidence_url')
+        .eq('id', decryptedDetails.incidentId)
+        .maybeSingle();
+
+      if (incident) {
+        doc.text(`Incidente ID: ${incident.id}`);
+        doc.text(`Título: ${incident.title}`);
+        doc.text(`Activo Afectado: ${incident.affected_asset}`);
+        doc.text(`Criticidad: ${incident.criticality}`);
+        doc.text(`Estado: ${incident.status}`);
+        doc.text(`Fuente: ${incident.source}`);
+        if (incident.evidence_url) {
+          doc.moveDown();
+          doc.text('Evidencia:', { underline: true });
+          doc.text(incident.evidence_url, { link: incident.evidence_url });
+        }
+      }
+    } else if (logRec.action === 'CHANGE_ROLE') {
+      doc.text(`Usuario Afectado: ${decryptedDetails?.targetUserId || '-'}`);
+      doc.text(`Nuevo Rol: ${decryptedDetails?.newRole || '-'}`);
     }
+
     doc.end();
 
   } catch (err) {
     console.error('PDF export error:', err);
-    return res.status(500).json({ error: 'No se pudo exportar PDF.' });
+    res.status(500).json({ error: 'No se pudo exportar PDF.' });
   }
 });
 
@@ -404,59 +474,66 @@ app.post('/api/admin/promote', authenticateToken, async (req, res) => {
   res.status(200).json({ message: `User role updated to ${newRole}`, user: data.user });
 });
 
-// Endpoint to update an incident's status or classification
-app.patch('/api/incidents/:id', authenticateToken, async (req, res) => {
-  const userRole = req.user.user_metadata.role;
-  const { id } = req.params;
-  // Ahora también se permite actualizar la resolución
-  const { status, classification, criticality, resolution } = req.body; 
+// Actualizar incidente (TRBAC)
+app.patch('/api/incidents/:id', 
+  authenticateToken,
+  checkTimeAccess("Editar", "Incidente"), 
+  async (req, res) => {
+    const userRole = req.user.user_metadata.role;
+    const { id } = req.params;
+    const { status, classification, criticality, resolution } = req.body; 
 
-  const authorizedRoles = ['Analista de Seguridad', 'Jefe de SOC'];
-  if (!authorizedRoles.includes(userRole)) {
-    return res.status(403).json({ error: 'Forbidden: You do not have permission to update incidents.' });
-  }
+    const authorizedRoles = ['Analista de Seguridad', 'Jefe de SOC'];
+    if (!authorizedRoles.includes(userRole)) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to update incidents.' });
+    }
 
-  const updateData = {};
-  if (status) updateData.status = status;
-  if (classification) updateData.classification = classification;
-  if (criticality) updateData.criticality = criticality; 
-  if (resolution) updateData.resolution = resolution;
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (classification) updateData.classification = classification;
+    if (criticality) updateData.criticality = criticality; 
+    if (resolution) updateData.resolution = resolution;
 
-  if (Object.keys(updateData).length === 0) {
-    return res.status(400).json({ error: 'Bad Request: No update data provided.' });
-  }
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'Bad Request: No update data provided.' });
+    }
 
-  // ... the rest of the function is the same
-  const { data, error } = await supabase
-    .from('incidents')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single();
+    // 1️⃣ Actualizar el incidente
+    const { data, error } = await supabase
+      .from('incidents')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
 
-  if (error) {
-    return res.status(400).json({ error: error.message });
-  }
+    if (error) return res.status(400).json({ error: error.message });
 
-  if (!error) {
+    // 2️⃣ Obtener al dueño del incidente
+    const { data: ownerRec, error: ownerErr } = await supabaseAdmin.auth.admin.getUserById(data.creator_id);
+    if (ownerErr) {
+      console.error('❌ Error obteniendo el dueño del incidente:', ownerErr.message);
+    }
+
+    const ownerEmail = ownerRec?.user?.email;
+
+    // 3️⃣ Registrar la acción en los logs
     await logAction(req.user.id, 'UPDATE_INCIDENT', { incidentId: data.id, changes: updateData });
 
-    // Notificar por email cada vez que se actualiza la incidencia
-    const subject = `Actualización de Incidente #${data.id}`;
-    let body = `El incidente #${data.id} ha sido actualizado.\n\nCambios realizados:`;
-    Object.entries(updateData).forEach(([key, value]) => {
-      body += `\n- ${key}: ${value}`;
-    });
-    if (updateData.resolution) {
-      body += `\n\nResolución: ${updateData.resolution}`;
-    }
-    await sendAlertEmail(subject, body);
-  }
+    // 4️⃣ Enviar email al dueño
+    const subject = `Actualización de tu Incidente #${data.id}`;
+    let body = `Tu incidente #${data.id} ha sido actualizado por un ${userRole}.\n\nCambios realizados:`;
+    Object.entries(updateData).forEach(([key, value]) => { body += `\n- ${key}: ${value}`; });
+    if (updateData.resolution) body += `\n\nResolución: ${updateData.resolution}`;
 
-  res.status(200).json(data);
+    if (ownerEmail) {
+      await sendAlertEmail(subject, body, { email: ownerEmail });
+    }
+
+    res.status(200).json(data);
 });
 
-app.post('/api/incidents/:id/upload', authenticateToken, upload.single('evidenceFile'), async (req, res) => {
+
+app.post('/api/incidents/:id/upload', authenticateToken, checkTimeAccess("Adjuntar", "Evidencia"), upload.single('evidenceFile'), async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id; // ID del usuario autenticado
 
@@ -605,8 +682,15 @@ app.get('/api/mfa/factors', authenticateToken, async (req, res) => {
 });
 
 // --- REPORTING ENDPOINTS ---
-
-app.get('/api/reports/monthly', authenticateToken, async (req, res) => {
+app.get('/api/reports/monthly', authenticateToken, 
+  (req, res, next) => {
+    const role = req.user.user_metadata.role;
+    if (role === "Auditor") {
+      return checkTimeAccess("Ver", "Reportes mensuales")(req, res, next);
+    }
+    return checkTimeAccess("Generar", "Reporte mensual")(req, res, next);
+  },
+  async (req, res) => {
   const userRole = req.user.user_metadata.role;
 
   // RBAC: Solo roles específicos pueden acceder a los reportes.
@@ -755,6 +839,36 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
   res.status(200).json(data.users);
+});
+
+// Endpoint para que el Jefe de SOC cambie roles
+app.post("/api/users/:id/change-role", authenticateToken, requireRole("Jefe de SOC"), async (req, res) => {
+  const { id } = req.params;
+  const { newRole } = req.body;
+
+  const validRoles = ['Usuario', 'Analista de Seguridad', 'Jefe de SOC', 'Auditor', 'Gerente de Riesgos'];
+  if (!validRoles.includes(newRole)) {
+    return res.status(400).json({ error: 'Rol inválido.' });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(id, {
+      user_metadata: { role: newRole }
+    });
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    await logAction(req.user.id, "CHANGE_ROLE", {
+      targetUserId: id,
+      newRole,
+    });
+
+    res.json({ message: `Rol cambiado a ${newRole}`, user: data.user });
+  } catch (err) {
+    return res.status(500).json({ error: "Error interno del servidor" });
+  }
 });
 
 

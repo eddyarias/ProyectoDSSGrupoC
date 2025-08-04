@@ -23,18 +23,18 @@ import apiClient from '../utils/apiClient';
 
 const AuditLogPage = () => {
   // Estados de datos y carga
-  const [logs, setLogs]               = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Estados de filtros
-  const [userFilter, setUserFilter]   = useState('');
+  const [userFilter, setUserFilter] = useState('');
   const [actionFilter, setActionFilter] = useState('');
-  const [startDate, setStartDate]     = useState('');
-  const [endDate, setEndDate]         = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Estados para el modal y detalle
-  const [isModalOpen, setIsModalOpen]     = useState(false);
-  const [selectedLog, setSelectedLog]     = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedLog, setSelectedLog] = useState(null);
   const [incidentDetail, setIncidentDetail] = useState(null);
 
   // Opciones de acción
@@ -74,14 +74,27 @@ const AuditLogPage = () => {
     });
 
   // Al hacer clic en una fila, abrimos modal y pedimos el incidente completo
-  const handleRowClick = log => {
+  const handleRowClick = (log) => {
     setSelectedLog(log);
     setIsModalOpen(true);
+
     setIncidentDetail(null);
 
-    apiClient.get(`/incidents/${log.details.incidentId}`)
-      .then(r => setIncidentDetail(r.data))
-      .catch(() => setIncidentDetail(null));
+    // Si es un log relacionado con incidentes → buscar el incidente
+    if (['CREATE_INCIDENT', 'UPDATE_INCIDENT'].includes(log.action)) {
+      apiClient
+        .get(`/incidents/${log.details.incidentId}`)
+        .then((r) => setIncidentDetail(r.data))
+        .catch(() => setIncidentDetail(null));
+    }
+
+    // Si es un cambio de rol, no busques incidentes
+    if (log.action === 'CHANGE_ROLE') {
+      setIncidentDetail({
+        affectedUser: log.details?.targetUserId || '-',
+        newRole: log.details?.newRole || '-',
+      });
+    }
   };
 
   const handleCloseModal = () => {
@@ -225,32 +238,27 @@ const AuditLogPage = () => {
                     <strong>Fecha:</strong>{' '}
                     {new Date(selectedLog.timestamp).toLocaleString()}
                   </Typography>
-                  <Typography gutterBottom>
-                    <strong>ID de Incidente:</strong>{' '}
-                    {selectedLog.details.incidentId}
-                  </Typography>
-                  <Typography gutterBottom>
-                    <strong>Título:</strong>{' '}
-                    {selectedLog.details.title}
-                  </Typography>
 
-                  {incidentDetail ? (
+                  {/* Mostrar según el tipo de acción */}
+                  {['CREATE_INCIDENT', 'UPDATE_INCIDENT'].includes(selectedLog.action) && incidentDetail ? (
                     <>
                       <Typography gutterBottom>
-                        <strong>Activo Afectado:</strong>{' '}
-                        {incidentDetail.affected_asset}
+                        <strong>ID de Incidente:</strong> {incidentDetail.id}
                       </Typography>
                       <Typography gutterBottom>
-                        <strong>Criticidad:</strong>{' '}
-                        {incidentDetail.criticality}
+                        <strong>Título:</strong> {incidentDetail.title}
                       </Typography>
                       <Typography gutterBottom>
-                        <strong>Estado:</strong>{' '}
-                        {incidentDetail.status}
+                        <strong>Activo Afectado:</strong> {incidentDetail.affected_asset}
                       </Typography>
                       <Typography gutterBottom>
-                        <strong>Fuente:</strong>{' '}
-                        {incidentDetail.source}
+                        <strong>Criticidad:</strong> {incidentDetail.criticality}
+                      </Typography>
+                      <Typography gutterBottom>
+                        <strong>Estado:</strong> {incidentDetail.status}
+                      </Typography>
+                      <Typography gutterBottom>
+                        <strong>Fuente:</strong> {incidentDetail.source}
                       </Typography>
                       {incidentDetail.evidence_url && (
                         <Box mt={1}>
@@ -264,14 +272,22 @@ const AuditLogPage = () => {
                         </Box>
                       )}
                     </>
-                  ) : (
-                    <Box display="flex" justifyContent="center" mt={2}>
-                      <CircularProgress size={24} />
-                    </Box>
+                  ) : null}
+
+                  {selectedLog.action === 'CHANGE_ROLE' && incidentDetail && (
+                    <>
+                      <Typography gutterBottom>
+                        <strong>Usuario Afectado:</strong> {incidentDetail.affectedUser}
+                      </Typography>
+                      <Typography gutterBottom>
+                        <strong>Nuevo Rol:</strong> {incidentDetail.newRole}
+                      </Typography>
+                    </>
                   )}
                 </>
               )}
             </DialogContent>
+
 
             <DialogActions>
               <Button

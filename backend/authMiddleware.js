@@ -1,26 +1,43 @@
 const { supabase } = require('./supabaseClient');
 
+// Middleware para verificar token
 const authenticateToken = async (req, res, next) => {
-  // Get the token from the Authorization header
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Format is "Bearer TOKEN"
+  const token = authHeader && authHeader.split(' ')[1]; // Formato: "Bearer TOKEN"
 
   if (!token) {
-    return res.sendStatus(401); // Unauthorized if no token is provided
+    return res.status(401).json({ error: "Token requerido" });
   }
 
-  // Use Supabase to verify the token
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+  // Verificar token en Supabase
+  const { data, error } = await supabase.auth.getUser(token);
 
-  if (error || !user) {
-    return res.sendStatus(403); // Forbidden if token is invalid
+  if (error || !data?.user) {
+    return res.status(403).json({ error: "Token inválido o expirado" });
   }
 
-  // If the token is valid, attach the user to the request object
-  req.user = user;
-  
-  // Move on to the next function in the chain
+  // Guardamos el usuario en la request
+  req.user = data.user;
+
   next();
 };
 
-module.exports = authenticateToken;
+// Middleware para verificar rol
+const requireRole = (role) => {
+  return (req, res, next) => {
+    const userRole = req.user?.user_metadata?.role;
+    
+    if (!userRole) {
+      return res.status(403).json({ error: "Rol no definido en el usuario" });
+    }
+
+    if (userRole !== role) {
+      console.error(`❌ Rol insuficiente: ${userRole} (se requiere ${role})`);
+      return res.status(403).json({ error: "Acceso denegado: rol insuficiente" });
+    }
+
+    next();
+  };
+};
+
+module.exports = { authenticateToken, requireRole };
